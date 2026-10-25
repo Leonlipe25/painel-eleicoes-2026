@@ -10,22 +10,27 @@ from __future__ import annotations
 from html.parser import HTMLParser
 from html import unescape
 from pathlib import Path
+from datetime import datetime, timedelta
 import json
 import os
 import re
 import threading
 import time
+from urllib.parse import urlparse
 import urllib.request
 import unicodedata
+from zoneinfo import ZoneInfo
 
 FONTE = 'G1'
 G1 = 'https://g1.globo.com/mundo/noticia/2026/10/25/votacao-no-exterior-confira-os-resultados-do-2o-turno-entre-lula-e-flavio-bolsonaro.ghtml'
+G1_SITEMAP = 'https://g1.globo.com/sitemap/g1/sitemap.xml'
 PODER360 = 'https://www.poder360.com.br/poder-eleicoes-2026/compare-as-votacoes-de-lula-e-flavio-no-1o-e-no-2o-turno-no-exterior/'
 BASE = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get('PAINEL_DATA_DIR', str(BASE))).expanduser().resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 CACHE = DATA_DIR / '.imprensa_exterior_cache.json'
 INTERVALO = 180
+INTERVALO_DESCOBERTA = 300
 PODER_PUBLICADO_EM = '2026-10-25 11:39 (Brasília)'
 
 # Última fotografia verificada antes da publicação desta versão. O coletor
@@ -206,16 +211,118 @@ def rows(records):
             for p, (l, f) in sorted(records.items(), key=lambda x: -(x[1][0] + x[1][1]))]
 
 
-def _baixar(url):
+def _baixar_resposta(url, tipos=('text/html',), limite=2_500_000, timeout=12):
     req = urllib.request.Request(url, headers={
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
+        'Accept': 'text/html,application/xhtml+xml,application/xml,text/xml;q=0.9',
         'Accept-Encoding': 'identity',
     })
-    with urllib.request.urlopen(req, timeout=12) as response:
-        if 'text/html' not in response.headers.get('Content-Type', 'text/html'):
-            raise ValueError('Resposta inesperada, não é HTML')
-        return response.read(2_500_000).decode('utf8', errors='replace')
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        content_type = response.headers.get('Content-Type', '').lower()
+        if tipos and not any(tipo in content_type for tipo in tipos):
+            raise ValueError(f'Resposta em formato inesperado: {content_type or "sem Content-Type"}')
+        return response.read(limite).decode('utf8', errors='replace'), response.geturl()
+
+
+def _baixar(url):
+    return _baixar_resposta(url)[0]
+
+
+def _url_g1_valida(url):
+    parsed = urlparse(url)
+    return (parsed.scheme == 'https' and parsed.hostname == 'g1.globo.com'
+            and parsed.path.endswith('.ghtml') and '/google/amp/' not in parsed.path)
+
+
+def _amp_url(url):
+    parsed = urlparse(url)
+    if parsed.hostname != 'g1.globo.com':
+        raise ValueError('URL fora do domínio do G1')
+    return f'https://g1.globo.com/google/amp{parsed.path}'
+
+
+def _data_iso(valor):
+    try:
+        return datetime.fromisoformat(valor or '').timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _pontuar_url_g1(url):
+    """Restringe a descoberta a matérias inequivocamente ligadas ao placar."""
+    slug = normal(url.replace('-', ' ').replace('/', ' '))
+    pontos = 0
+    pontos += 9 if 'exterior' in slug else 0
+    pontos += 3 if 'votacao' in slug else 0
+    pontos += 3 if 'resultad' in slug else 0
+    pontos += 2 if '2o turno' in slug or 'segundo turno' in slug else 0
+    pontos += 2 if 'lula' in slug else 0
+    pontos += 2 if 'flavio' in slug else 0
+    pontos += 2 if '/mundo/' in url else 0
+    return pontos
+
+
+def descobrir_urls_g1(agora=None):
+    """Localiza possíveis substitutas usando somente os sitemaps oficiais do G1."""
+    agora = agora or datetime.now(ZoneInfo('America/Sao_Paulo'))
+    seed_date = re.search(r'/(\d{4}/\d{2}/\d{2})/', G1)
+    datas = [(agora - timedelta(days=i)).strftime('%Y/%m/%d') for i in range(3)]
+    if seed_date and seed_date.group(1) not in datas:
+        datas.append(seed_date.group(1))
+    # A consulta direta evita baixar o índice completo (cerca de 1 MB) em cada
+    # rodada. O índice continua como plano B caso o G1 altere a segmentação.
+    mapas = [f'https://g1.globo.com/sitemap/g1/{data}_1.xml' for data in datas]
+    candidatos = {}
+    consultados = set()
+    for mapa in mapas:
+        consultados.add(mapa)
+        try:
+            conteudo, _ = _baixar_resposta(
+                mapa, tipos=('application/xml', 'text/xml'), limite=2_000_000, timeout=20)
+        except Exception:
+            continue
+        for url in re.findall(r'<loc>\s*([^<]+)', conteudo, re.I):
+            url = unescape(url.strip())
+            if _url_g1_valida(url):
+                pontos = _pontuar_url_g1(url)
+                if pontos >= 12:
+                    candidatos[url] = max(pontos, candidatos.get(url, 0))
+        if candidatos:
+            break
+    if not candidatos:
+        xml, _ = _baixar_resposta(
+            G1_SITEMAP, tipos=('application/xml', 'text/xml'), limite=2_000_000, timeout=20)
+        extras = [unescape(x) for x in re.findall(r'<loc>\s*([^<]+)', xml, re.I)]
+        for mapa in [u for u in extras if u not in consultados and any(f'/{data}_' in u for data in datas)][:8]:
+            try:
+                conteudo, _ = _baixar_resposta(
+                    mapa, tipos=('application/xml', 'text/xml'), limite=2_000_000, timeout=20)
+            except Exception:
+                continue
+            for url in re.findall(r'<loc>\s*([^<]+)', conteudo, re.I):
+                url = unescape(url.strip())
+                if _url_g1_valida(url):
+                    pontos = _pontuar_url_g1(url)
+                    if pontos >= 12:
+                        candidatos[url] = max(pontos, candidatos.get(url, 0))
+    return [url for url, _ in sorted(candidatos.items(), key=lambda item: (-item[1], item[0]))]
+
+
+def obter_g1(url):
+    """Lê a página normal e usa a versão AMP oficial se a primeira falhar."""
+    erros = []
+    for modo, alvo in (('pagina_normal', url), ('pagina_amp', _amp_url(url))):
+        try:
+            html, final = _baixar_resposta(alvo)
+            resumo = parse_g1(html)
+            canonical = re.search(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)', html, re.I)
+            resolvida = unescape(canonical.group(1)) if canonical else final
+            if not _url_g1_valida(resolvida):
+                resolvida = url
+            return resumo, resolvida, modo
+        except Exception as exc:
+            erros.append(f'{modo}: {type(exc).__name__}: {str(exc)[:120]}')
+    raise ValueError('; '.join(erros))
 
 
 class Imprensa:
@@ -223,20 +330,29 @@ class Imprensa:
         self.refresh = refresh
         self.lock = threading.Lock()
         self.next_try = 0
+        self.next_discovery = 0
+        self.buscando = False
         self.checked_at = None
+        self.discovery_at = None
         self.changed_at = None
         self.g1_online = False
         self.poder_online = False
         self.erro_g1 = None
+        self.erro_descoberta = None
         self.erro_poder = None
         self.resumo_g1 = dict(G1_BASELINE)
         self.dados_poder = {p: (l, f) for p, l, f in PODER_BASELINE}
+        self.url_g1 = G1
+        self.modo_g1 = 'referencia_publicada'
         self.origem_g1 = 'referencia_publicada'
         try:
             value = json.loads(CACHE.read_text(encoding='utf8'))
             resumo = value.get('resumo_g1', {})
-            if value.get('url_g1') == G1 and resumo.get('vitorias_lula') is not None:
+            url_cache = value.get('url_g1', G1)
+            if _url_g1_valida(url_cache) and resumo.get('vitorias_lula') is not None:
                 self.resumo_g1 = resumo
+                self.url_g1 = url_cache
+                self.modo_g1 = value.get('modo_g1', 'ultima_leitura_local')
                 self.origem_g1 = 'ultima_leitura_local'
             poder = value.get('dados_poder', {})
             if value.get('url_poder360') == PODER360 and len(poder) >= 4:
@@ -247,20 +363,49 @@ class Imprensa:
 
     def atualizar(self):
         with self.lock:
-            if time.monotonic() >= self.next_try:
+            if time.monotonic() >= self.next_try and not self.buscando:
                 self.next_try = time.monotonic() + self.refresh
+                self.buscando = True
                 threading.Thread(target=self._buscar, daemon=True, name='imprensa-exterior').start()
             return self.panorama_sem_lock()
 
     def _buscar(self):
         novo_g1 = None
+        nova_url = None
+        novo_modo = None
         novo_poder = None
         erro_g1 = None
+        erro_descoberta = None
         erro_poder = None
+        agora_monotonic = time.monotonic()
+        fazer_descoberta = agora_monotonic >= self.next_discovery
+        candidatos = [self.url_g1, G1]
+        if fazer_descoberta:
+            try:
+                candidatos = descobrir_urls_g1() + candidatos
+            except Exception as exc:
+                erro_descoberta = f'{type(exc).__name__}: {str(exc)[:160]}'
+            self.next_discovery = agora_monotonic + INTERVALO_DESCOBERTA
+            self.discovery_at = time.time()
+        candidatos = list(dict.fromkeys(url for url in candidatos if _url_g1_valida(url)))[:8]
+        leituras = []
         try:
-            novo_g1 = parse_g1(_baixar(G1))
+            erros = []
+            for url in candidatos:
+                try:
+                    resumo, resolvida, modo = obter_g1(url)
+                    leituras.append((resumo, resolvida, modo))
+                except Exception as exc:
+                    erros.append(f'{url}: {str(exc)[:120]}')
+            if not leituras:
+                raise ValueError(' | '.join(erros) or 'Nenhum endereço candidato foi encontrado')
+            novo_g1, nova_url, novo_modo = max(
+                leituras,
+                key=lambda item: (_data_iso(item[0].get('atualizado_em')),
+                                  item[0].get('lula', 0) + item[0].get('flavio', 0)),
+            )
         except Exception as exc:
-            erro_g1 = f'{type(exc).__name__}: {str(exc)[:160]}'
+            erro_g1 = f'{type(exc).__name__}: {str(exc)[:240]}'
         try:
             novo_poder = parse_poder360(_baixar(PODER360))
         except Exception as exc:
@@ -269,9 +414,11 @@ class Imprensa:
             antes = self.resumo_g1
             if novo_g1 is not None:
                 self.resumo_g1 = novo_g1
+                self.url_g1 = nova_url
+                self.modo_g1 = novo_modo
                 self.g1_online = True
                 self.checked_at = time.time()
-                self.origem_g1 = 'artigo_g1_consultado'
+                self.origem_g1 = 'artigo_g1_descoberto_e_consultado' if nova_url != G1 else 'artigo_g1_consultado'
                 if novo_g1 != antes:
                     self.changed_at = self.checked_at
             else:
@@ -282,10 +429,13 @@ class Imprensa:
             else:
                 self.poder_online = False
             self.erro_g1 = erro_g1
+            self.erro_descoberta = erro_descoberta
             self.erro_poder = erro_poder
+            self.buscando = False
             try:
                 CACHE.write_text(json.dumps(dict(
-                    url_g1=G1,
+                    url_g1=self.url_g1,
+                    modo_g1=self.modo_g1,
                     url_poder360=PODER360,
                     resumo_g1=self.resumo_g1,
                     dados_poder=self.dados_poder,
@@ -298,8 +448,8 @@ class Imprensa:
         return dict(
             tipo='levantamento_jornalistico_nao_oficial',
             fonte=FONTE,
-            url_fonte=G1,
-            url_g1=G1,
+            url_fonte=self.url_g1,
+            url_g1=self.url_g1,
             url_poder360=PODER360,
             resumo_g1=self.resumo_g1,
             dados_publicados_a_partir_de=PODER_PUBLICADO_EM,
@@ -308,7 +458,12 @@ class Imprensa:
             acesso_pagina_nesta_tentativa=self.g1_online,
             acesso_poder360_nesta_tentativa=self.poder_online,
             origem=self.origem_g1,
+            modo_leitura_g1=self.modo_g1,
+            descoberta_automatica=True,
+            descoberta_realizada_em=self.discovery_at,
+            dados_g1_desatualizados=not self.g1_online,
             erro_ultima_consulta=self.erro_g1,
+            erro_descoberta_g1=self.erro_descoberta,
             erro_poder360=self.erro_poder,
             proxima_verificacao_segundos=self.refresh,
             paises_poder=rows(self.dados_poder),
