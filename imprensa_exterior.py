@@ -36,12 +36,12 @@ PODER_PUBLICADO_EM = '2026-10-25 11:39 (Brasília)'
 # Última fotografia verificada antes da publicação desta versão. O coletor
 # substitui estes valores assim que consegue ler a matéria do G1.
 G1_BASELINE = dict(
-    lula=106944,
-    flavio=72066,
-    vitorias_lula=41,
+    lula=141263,
+    flavio=95499,
+    vitorias_lula=42,
     vitorias_flavio=12,
-    paises_territorios=53,
-    atualizado_em='2026-10-25T16:08:25.583-03:00',
+    paises_territorios=54,
+    atualizado_em='2026-10-25T16:46:16.517-03:00',
 )
 
 # Fotografia completa do G1 validada em 25/10/2026. É usada somente durante
