@@ -44,6 +44,28 @@ G1_BASELINE = dict(
     atualizado_em='2026-10-25T16:08:25.583-03:00',
 )
 
+# Fotografia completa do G1 validada em 25/10/2026. É usada somente durante
+# a primeira consulta após um reinício; a matéria substitui estes valores.
+G1_PAISES_BASELINE = [
+ ('Austrália',6017,3465),('Nova Zelândia',418,101),('Arábia Saudita',49,31),
+ ('Catar',159,195),('China',502,267),('Chipre',29,25),('Coreia do Sul',148,82),
+ ('Emirados Árabes',643,772),('Filipinas',27,39),('Indonésia',15,23),
+ ('Israel',166,699),('Japão',7098,28538),('Jordânia',725,76),('Kuwait',62,17),
+ ('Líbano',2736,1276),('Malásia',41,44),('Palestina',1000,46),
+ ('Singapura',213,121),('Síria',106,11),('Tailândia',56,60),('Taiwan',94,130),
+ ('Alemanha',16549,4374),('Áustria',1178,393),('Bélgica',3064,2154),
+ ('Croácia',31,26),('Dinamarca',1383,243),('Eslováquia',47,14),
+ ('Eslovênia',67,28),('Espanha',9293,4289),('Estônia',160,33),
+ ('Finlândia',550,185),('França',10676,2039),('Grécia',255,311),
+ ('Holanda',5578,1383),('Hungria',355,117),('Irlanda',7194,1776),
+ ('Itália',7921,5283),('Noruega',820,248),('Polônia',268,89),
+ ('Portugal',34319,23433),('Reino Unido',10968,6349),
+ ('República Tcheca',304,86),('Romênia',40,25),('Sérvia',35,13),
+ ('Suécia',2127,591),('Suíça',7089,5419),('África do Sul',186,256),
+ ('Angola',167,118),('Cabo Verde',48,29),('Egito',60,16),('Marrocos',31,6),
+ ('Moçambique',108,117),('Quênia',29,16),('Senegal',59,22),
+]
+
 # Fotografia editorial da reportagem do Poder360 consultada em 25/10/2026.
 # Campos: país, votos Lula, votos Flávio. É apenas a tabela secundária.
 PODER_BASELINE = [
@@ -125,6 +147,105 @@ def parse_g1(html):
         paises_territorios=vl + vf,
         atualizado_em=data.group(1) if data else None,
     )
+
+
+class G1CountrySections(HTMLParser):
+    """Separa os países e seus blocos na reportagem do G1."""
+    CONTINENTES = {'OCEANIA E ASIA', 'EUROPA', 'AMERICA', 'AFRICA'}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.skip = 0
+        self.heading = False
+        self.heading_text = []
+        self.active = False
+        self.stopped = False
+        self.current = None
+        self.parts = []
+        self.sections = []
+
+    def _flush(self):
+        if self.current:
+            self.sections.append((self.current, ' '.join(self.parts)))
+        self.current = None
+        self.parts = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ('script', 'style', 'noscript'):
+            self.skip += 1
+        if self.skip:
+            return
+        if tag == 'h2':
+            self.heading = True
+            self.heading_text = []
+        elif tag == 'h3' and self.active:
+            self._flush()
+            self.active = False
+            self.stopped = True
+        elif self.current and tag in ('p', 'li', 'br'):
+            self.parts.append(' ')
+
+    def handle_endtag(self, tag):
+        if tag in ('script', 'style', 'noscript'):
+            self.skip = max(0, self.skip - 1)
+            return
+        if self.skip:
+            return
+        if tag == 'h2' and self.heading:
+            title = ' '.join(''.join(self.heading_text).split())
+            self.heading = False
+            if self.stopped:
+                return
+            if normal(title).upper() in self.CONTINENTES:
+                self._flush()
+                self.active = True
+            elif self.active:
+                self._flush()
+                self.current = title
+        elif self.current and tag in ('p', 'li'):
+            self.parts.append(' ')
+
+    def handle_data(self, data):
+        if self.skip:
+            return
+        if self.heading:
+            self.heading_text.append(data)
+        elif self.current:
+            self.parts.append(data)
+
+    def finish(self):
+        self._flush()
+        return self.sections
+
+
+def _voto_g1(texto, candidato):
+    match = re.search(
+        rf'\b2\s*[º°o]?\s*turno\s*:\s*{candidato}(?:\s+Bolsonaro)?\s*,?\s*([\d.]+)(?:\s+votos?)?',
+        texto,
+        re.I,
+    )
+    return int(match.group(1).replace('.', '')) if match else None
+
+
+def parse_g1_paises(html, resumo):
+    parser = G1CountrySections()
+    parser.feed(html)
+    dados = {}
+    for pais, texto in parser.finish():
+        lula = _voto_g1(texto, 'Lula')
+        flavio = _voto_g1(texto, 'Flávio')
+        if lula is not None and flavio is not None:
+            dados[pais] = (lula, flavio)
+    total_lula = sum(v[0] for v in dados.values())
+    total_flavio = sum(v[1] for v in dados.values())
+    vitorias_lula = sum(l > f for l, f in dados.values())
+    vitorias_flavio = sum(f > l for l, f in dados.values())
+    esperado = (resumo['paises_territorios'], resumo['lula'], resumo['flavio'],
+                resumo['vitorias_lula'], resumo['vitorias_flavio'])
+    observado = (len(dados), total_lula, total_flavio, vitorias_lula, vitorias_flavio)
+    if observado != esperado:
+        raise ValueError(f'Tabela do G1 ainda não fecha com o resumo: observado {observado}, esperado {esperado}')
+    return dados
 
 
 class Sections(HTMLParser):
@@ -315,11 +436,12 @@ def obter_g1(url):
         try:
             html, final = _baixar_resposta(alvo)
             resumo = parse_g1(html)
+            paises = parse_g1_paises(html, resumo)
             canonical = re.search(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)', html, re.I)
             resolvida = unescape(canonical.group(1)) if canonical else final
             if not _url_g1_valida(resolvida):
                 resolvida = url
-            return resumo, resolvida, modo
+            return resumo, paises, resolvida, modo
         except Exception as exc:
             erros.append(f'{modo}: {type(exc).__name__}: {str(exc)[:120]}')
     raise ValueError('; '.join(erros))
@@ -341,6 +463,7 @@ class Imprensa:
         self.erro_descoberta = None
         self.erro_poder = None
         self.resumo_g1 = dict(G1_BASELINE)
+        self.dados_g1 = {p: (l, f) for p, l, f in G1_PAISES_BASELINE}
         self.dados_poder = {p: (l, f) for p, l, f in PODER_BASELINE}
         self.url_g1 = G1
         self.modo_g1 = 'referencia_publicada'
@@ -354,6 +477,9 @@ class Imprensa:
                 self.url_g1 = url_cache
                 self.modo_g1 = value.get('modo_g1', 'ultima_leitura_local')
                 self.origem_g1 = 'ultima_leitura_local'
+            g1_paises = value.get('dados_g1', {})
+            if len(g1_paises) == resumo.get('paises_territorios'):
+                self.dados_g1 = {k: tuple(v) for k, v in g1_paises.items()}
             poder = value.get('dados_poder', {})
             if value.get('url_poder360') == PODER360 and len(poder) >= 4:
                 self.dados_poder = {k: tuple(v) for k, v in poder.items() if k in NOMES.values()}
@@ -371,6 +497,7 @@ class Imprensa:
 
     def _buscar(self):
         novo_g1 = None
+        novos_paises_g1 = None
         nova_url = None
         novo_modo = None
         novo_poder = None
@@ -393,13 +520,13 @@ class Imprensa:
             erros = []
             for url in candidatos:
                 try:
-                    resumo, resolvida, modo = obter_g1(url)
-                    leituras.append((resumo, resolvida, modo))
+                    resumo, paises_g1, resolvida, modo = obter_g1(url)
+                    leituras.append((resumo, paises_g1, resolvida, modo))
                 except Exception as exc:
                     erros.append(f'{url}: {str(exc)[:120]}')
             if not leituras:
                 raise ValueError(' | '.join(erros) or 'Nenhum endereço candidato foi encontrado')
-            novo_g1, nova_url, novo_modo = max(
+            novo_g1, novos_paises_g1, nova_url, novo_modo = max(
                 leituras,
                 key=lambda item: (_data_iso(item[0].get('atualizado_em')),
                                   item[0].get('lula', 0) + item[0].get('flavio', 0)),
@@ -414,6 +541,7 @@ class Imprensa:
             antes = self.resumo_g1
             if novo_g1 is not None:
                 self.resumo_g1 = novo_g1
+                self.dados_g1 = novos_paises_g1
                 self.url_g1 = nova_url
                 self.modo_g1 = novo_modo
                 self.g1_online = True
@@ -438,6 +566,7 @@ class Imprensa:
                     modo_g1=self.modo_g1,
                     url_poder360=PODER360,
                     resumo_g1=self.resumo_g1,
+                    dados_g1=self.dados_g1,
                     dados_poder=self.dados_poder,
                     alteracao_observada_em=self.changed_at,
                 ), ensure_ascii=False), encoding='utf8')
@@ -466,8 +595,9 @@ class Imprensa:
             erro_descoberta_g1=self.erro_descoberta,
             erro_poder360=self.erro_poder,
             proxima_verificacao_segundos=self.refresh,
+            paises_g1=rows(self.dados_g1),
             paises_poder=rows(self.dados_poder),
-            paises=rows(self.dados_poder),
+            paises=rows(self.dados_g1),
             aviso=('Resumo principal lido do G1. A tabela por país é uma referência secundária do Poder360. '
                    'Não somar nenhuma das fontes jornalísticas aos BUs ou à totalização oficial do TSE.'),
         )
