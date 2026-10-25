@@ -343,6 +343,7 @@ select:focus-visible,.btn:focus-visible{outline:2px solid #7ab5ff;outline-offset
     <article class="card"><div class="eyebrow">Seções totalizadas</div><div class="value" id="secoes">—</div><div class="hint" id="secoesInfo">Aguardando totalização</div></article>
     <article class="card"><div class="eyebrow">Votos válidos</div><div class="value" id="validos">—</div><div class="hint">Total computado nos candidatos</div></article>
     <article class="card"><div class="eyebrow">Comparecimento</div><div class="value" id="comparecimento">—</div><div class="hint">Eleitoras e eleitores contabilizados</div></article>
+    <article class="card"><div class="eyebrow">Eleitores ainda não contabilizados</div><div class="value" id="pendentes">—</div><div class="hint" id="pendentesInfo">Eleitorado das seções restantes</div></article>
     <article class="card"><div class="eyebrow">Diferença entre candidatos</div><div class="value" id="diferenca">—</div><div class="hint" id="difInfo">Em votos válidos</div></article>
     <article class="card"><div class="eyebrow">Quem lidera</div><div class="value" id="lideranca">—</div><div class="hint" id="liderancaInfo">Aguardando votos válidos</div></article>
   </section>
@@ -569,7 +570,7 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 function setStatus(kind,msg){$('status').className='badge-live '+kind;$('statusText').textContent=msg;}
 function setNotice(html){$('notice').innerHTML=html;}
 function updateCounters(){ $('counter').textContent=timer+' s'; $('stateCounter').textContent=stateTimer+' s'; }
-function resetMain(){ ['secoes','validos','comparecimento','diferenca','lideranca','candTotal','brancos','nulos','abstencoes','stCount','tsCount','geracao','consulta','progressLabel'].forEach(id=>$(id).textContent='—'); $('secoesInfo').textContent='Aguardando totalização'; $('difInfo').textContent='Em votos válidos'; $('liderancaInfo').textContent='Aguardando votos válidos'; $('progressFill').style.width='0%'; $('winnerHero').classList.remove('show'); $('comparisonInfo').textContent='Aguardando apuração'; $('dataTag').textContent='Dados oficiais'; $('summaryBox').innerHTML='<div class="mini-banner"><strong>Sem votos publicados.</strong> O painel está pronto e aguardando a divulgação da totalização para esta abrangência.</div>'; $('duelHead').innerHTML=`<div class="duel-card"><div class="small">Candidato</div><div class="name">—</div><div class="party">—</div><div class="pct">—</div><div class="votes">—</div></div><div class="versus">x</div><div class="duel-card alt"><div class="small">Candidato</div><div class="name">—</div><div class="party">—</div><div class="pct">—</div><div class="votes">—</div></div>`; $('stackedTrack').innerHTML=''; $('candidates').innerHTML='<div class="placeholder">Consultando os arquivos oficiais do TSE…</div>'; $('chartBars').innerHTML='<div class="placeholder">O gráfico será montado assim que houver dados.</div>'; }
+function resetMain(){ ['secoes','validos','comparecimento','pendentes','diferenca','lideranca','candTotal','brancos','nulos','abstencoes','stCount','tsCount','geracao','consulta','progressLabel'].forEach(id=>$(id).textContent='—'); $('secoesInfo').textContent='Aguardando totalização'; $('pendentesInfo').textContent='Eleitorado das seções restantes'; $('difInfo').textContent='Em votos válidos'; $('liderancaInfo').textContent='Aguardando votos válidos'; $('progressFill').style.width='0%'; $('winnerHero').classList.remove('show'); $('comparisonInfo').textContent='Aguardando apuração'; $('dataTag').textContent='Dados oficiais'; $('summaryBox').innerHTML='<div class="mini-banner"><strong>Sem votos publicados.</strong> O painel está pronto e aguardando a divulgação da totalização para esta abrangência.</div>'; $('duelHead').innerHTML=`<div class="duel-card"><div class="small">Candidato</div><div class="name">—</div><div class="party">—</div><div class="pct">—</div><div class="votes">—</div></div><div class="versus">x</div><div class="duel-card alt"><div class="small">Candidato</div><div class="name">—</div><div class="party">—</div><div class="pct">—</div><div class="votes">—</div></div>`; $('stackedTrack').innerHTML=''; $('candidates').innerHTML='<div class="placeholder">Consultando os arquivos oficiais do TSE…</div>'; $('chartBars').innerHTML='<div class="placeholder">O gráfico será montado assim que houver dados.</div>'; }
 function extractCandidates(data){
   const all=[];
   for(const cargo of (data.carg||[])){
@@ -688,13 +689,15 @@ $('winnerOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) 
 
 function render(data,info){
   const sec=data.s||{}; const e=data.e||{}; const v=data.v||{};
-  const st=numero(sec.st), ts=numero(sec.ts), pctSec=perc(sec.pst), vv=numero(v.vv), vb=numero(v.vb), vn=numero(v.vn), comp=numero(e.c), abs=numero(e.a);
+  const st=numero(sec.st), ts=numero(sec.ts), pctSec=perc(sec.pst), vv=numero(v.vv), vb=numero(v.vb), vn=numero(v.vn), comp=numero(e.c), abs=numero(e.a), pend=numero(e.esnt), eleitorado=numero(e.te), eleitoradoTotalizado=numero(e.est);
   const cands=extractCandidates(data); const started=vv>0 || st>0; currentMain={cands,pctSec,st,ts,vv,data,selected,consultedAt:info.recebido_em}; recordHistory(cands,vv,data); updateTicker();
   $('dataTag').textContent=started ? 'PARCIAL OFICIAL' : 'DADOS AINDA NÃO DIVULGADOS';
   $('chartTitle').textContent=selected==='br' ? 'Resultado para presidente' : 'Presidente · '+(ESTADOS.find(x=>x.v===selected)?.n || selected.toUpperCase());
   $('secoes').textContent=ts ? fmtPct(pctSec) : '—';
   $('secoesInfo').textContent=ts ? `${n(st)} de ${n(ts)} seções totalizadas` : 'Aguardando totalização';
   $('validos').textContent=n(vv); $('comparecimento').textContent=n(comp);
+  $('pendentes').textContent=eleitorado ? n(pend) : '—';
+  $('pendentesInfo').textContent=eleitorado ? `${n(eleitoradoTotalizado)} de ${n(eleitorado)} eleitores em seções totalizadas` : 'Eleitorado das seções restantes';
   const margin = cands.length>1 ? cands[0].votes-cands[1].votes : 0;
   $('diferenca').textContent=started && cands.length>1 ? n(margin) : '—';
   $('difInfo').textContent=started && cands.length>1 ? `Margem de ${fmtPct(Math.max(0,cands[0].percent-cands[1].percent))}` : 'Em votos válidos';
