@@ -19,7 +19,7 @@ A página HTML **depende do servidor Python** para `/api/resultados`, `/api/impr
 - A URL do serviço é pública. O código faz muitas consultas ao TSE, especialmente para múltiplas UFs. Hospedagens podem impor limites de tráfego, CPU ou saída; monitore logs e reduza cadência se necessário.
 - Se usar plano pago com disco persistente, defina `PAINEL_DATA_DIR` para o diretório montado pelo provedor e, após validar o desempenho, `ENABLE_BU_COLLECTOR=1`. **Isso não resolve automaticamente os BUs zerados** observados no Mac; pode exigir investigação do formato/publicação.
 - O painel está rotulado como visualização independente. Não afirmar que representa o TSE.
-- **Transparência da imprensa**: o G1 é link de conferência; **os votos da tabela atualmente vêm do Poder360** (referência editorial antiga, com leitura automática tentativa a cada 3 min). Não há API do G1 integrada.
+- **Transparência da imprensa**: o resumo e a tabela por país são lidos diretamente da mesma matéria do G1. O painel só publica uma atualização quando a quantidade de países, a soma dos votos e o número de vitórias por candidato fecham entre si. O Poder360 permanece apenas como referência secundária identificada.
 - Não somar resultados jornalísticos ao TSE nem aos BUs, para evitar dupla contagem.
 - Fonte TSE: https://resultados.tse.jus.br/ ; G1: https://g1.globo.com/mundo/noticia/2026/10/25/votacao-no-exterior-confira-os-resultados-do-2o-turno-entre-lula-e-flavio-bolsonaro.ghtml
 - Verifique as condições de uso e atribuição dos dados jornalísticos antes de divulgar publicamente a reprodução de trechos ou resultados.

@@ -343,6 +343,7 @@ select:focus-visible,.btn:focus-visible{outline:2px solid #7ab5ff;outline-offset
     <article class="card"><div class="eyebrow">Seções totalizadas</div><div class="value" id="secoes">—</div><div class="hint" id="secoesInfo">Aguardando totalização</div></article>
     <article class="card"><div class="eyebrow">Votos válidos</div><div class="value" id="validos">—</div><div class="hint">Total computado nos candidatos</div></article>
     <article class="card"><div class="eyebrow">Comparecimento</div><div class="value" id="comparecimento">—</div><div class="hint">Eleitoras e eleitores contabilizados</div></article>
+    <article class="card"><div class="eyebrow">Eleitores ainda não contabilizados</div><div class="value" id="pendentes">—</div><div class="hint" id="pendentesInfo">Eleitorado das seções restantes</div></article>
     <article class="card"><div class="eyebrow">Diferença entre candidatos</div><div class="value" id="diferenca">—</div><div class="hint" id="difInfo">Em votos válidos</div></article>
     <article class="card"><div class="eyebrow">Quem lidera</div><div class="value" id="lideranca">—</div><div class="hint" id="liderancaInfo">Aguardando votos válidos</div></article>
   </section>
@@ -468,14 +469,14 @@ select:focus-visible,.btn:focus-visible{outline:2px solid #7ab5ff;outline-offset
   <section class="panel press-panel" id="pressPanel">
     <div class="panel-title"><div><div class="kicker">Bloco do exterior · referência jornalística</div>
       <h2 style="margin-top:8px">Exterior · parciais publicadas na imprensa</h2>
-      <div class="sub">Resumo principal lido automaticamente do G1. A tabela detalhada do Poder360 permanece separada como referência secundária.</div></div>
+      <div class="sub">Resumo e tabela por país lidos da mesma matéria do G1 e publicados somente quando as somas conferem.</div></div>
       <span class="press-tag" id="pressTag">G1 · VERIFICANDO</span>
     </div>
     <div class="press-meta" id="pressMeta">Consultando publicação jornalística...</div>
     <div class="press-summary" id="pressSummary"></div>
     <div class="press-tbl-wrap" id="pressTable"><div class="placeholder">Preparando o panorama publicado...</div></div>
     <div class="press-top"><div class="press-links"><a id="pressSource" href="https://g1.globo.com/mundo/noticia/2026/10/25/votacao-no-exterior-confira-os-resultados-do-2o-turno-entre-lula-e-flavio-bolsonaro.ghtml" target="_blank" rel="noopener noreferrer">Abrir matéria principal · G1</a><a href="https://www.poder360.com.br/poder-eleicoes-2026/compare-as-votacoes-de-lula-e-flavio-no-1o-e-no-2o-turno-no-exterior/" target="_blank" rel="noopener noreferrer">Referência secundária · Poder360</a></div><button class="btn" id="refreshPress">↻ Verificar reportagem</button></div>
-    <div class="press-diagnosis" id="pressDiagnosis">O painel procura automaticamente a matéria do G1 e mantém o último resultado validado se a fonte ficar temporariamente indisponível.</div>
+    <div class="press-diagnosis" id="pressDiagnosis">O painel procura automaticamente a matéria do G1 e mantém o último conjunto completo validado se a fonte ficar temporariamente indisponível.</div>
   </section>
 
   <section class="panel bu-panel" id="buPanel">
@@ -569,7 +570,7 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 function setStatus(kind,msg){$('status').className='badge-live '+kind;$('statusText').textContent=msg;}
 function setNotice(html){$('notice').innerHTML=html;}
 function updateCounters(){ $('counter').textContent=timer+' s'; $('stateCounter').textContent=stateTimer+' s'; }
-function resetMain(){ ['secoes','validos','comparecimento','diferenca','lideranca','candTotal','brancos','nulos','abstencoes','stCount','tsCount','geracao','consulta','progressLabel'].forEach(id=>$(id).textContent='—'); $('secoesInfo').textContent='Aguardando totalização'; $('difInfo').textContent='Em votos válidos'; $('liderancaInfo').textContent='Aguardando votos válidos'; $('progressFill').style.width='0%'; $('winnerHero').classList.remove('show'); $('comparisonInfo').textContent='Aguardando apuração'; $('dataTag').textContent='Dados oficiais'; $('summaryBox').innerHTML='<div class="mini-banner"><strong>Sem votos publicados.</strong> O painel está pronto e aguardando a divulgação da totalização para esta abrangência.</div>'; $('duelHead').innerHTML=`<div class="duel-card"><div class="small">Candidato</div><div class="name">—</div><div class="party">—</div><div class="pct">—</div><div class="votes">—</div></div><div class="versus">x</div><div class="duel-card alt"><div class="small">Candidato</div><div class="name">—</div><div class="party">—</div><div class="pct">—</div><div class="votes">—</div></div>`; $('stackedTrack').innerHTML=''; $('candidates').innerHTML='<div class="placeholder">Consultando os arquivos oficiais do TSE…</div>'; $('chartBars').innerHTML='<div class="placeholder">O gráfico será montado assim que houver dados.</div>'; }
+function resetMain(){ ['secoes','validos','comparecimento','pendentes','diferenca','lideranca','candTotal','brancos','nulos','abstencoes','stCount','tsCount','geracao','consulta','progressLabel'].forEach(id=>$(id).textContent='—'); $('secoesInfo').textContent='Aguardando totalização'; $('pendentesInfo').textContent='Eleitorado das seções restantes'; $('difInfo').textContent='Em votos válidos'; $('liderancaInfo').textContent='Aguardando votos válidos'; $('progressFill').style.width='0%'; $('winnerHero').classList.remove('show'); $('comparisonInfo').textContent='Aguardando apuração'; $('dataTag').textContent='Dados oficiais'; $('summaryBox').innerHTML='<div class="mini-banner"><strong>Sem votos publicados.</strong> O painel está pronto e aguardando a divulgação da totalização para esta abrangência.</div>'; $('duelHead').innerHTML=`<div class="duel-card"><div class="small">Candidato</div><div class="name">—</div><div class="party">—</div><div class="pct">—</div><div class="votes">—</div></div><div class="versus">x</div><div class="duel-card alt"><div class="small">Candidato</div><div class="name">—</div><div class="party">—</div><div class="pct">—</div><div class="votes">—</div></div>`; $('stackedTrack').innerHTML=''; $('candidates').innerHTML='<div class="placeholder">Consultando os arquivos oficiais do TSE…</div>'; $('chartBars').innerHTML='<div class="placeholder">O gráfico será montado assim que houver dados.</div>'; }
 function extractCandidates(data){
   const all=[];
   for(const cargo of (data.carg||[])){
@@ -688,13 +689,15 @@ $('winnerOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) 
 
 function render(data,info){
   const sec=data.s||{}; const e=data.e||{}; const v=data.v||{};
-  const st=numero(sec.st), ts=numero(sec.ts), pctSec=perc(sec.pst), vv=numero(v.vv), vb=numero(v.vb), vn=numero(v.vn), comp=numero(e.c), abs=numero(e.a);
+  const st=numero(sec.st), ts=numero(sec.ts), pctSec=perc(sec.pst), vv=numero(v.vv), vb=numero(v.vb), vn=numero(v.vn), comp=numero(e.c), abs=numero(e.a), pend=numero(e.esnt), eleitorado=numero(e.te), eleitoradoTotalizado=numero(e.est);
   const cands=extractCandidates(data); const started=vv>0 || st>0; currentMain={cands,pctSec,st,ts,vv,data,selected,consultedAt:info.recebido_em}; recordHistory(cands,vv,data); updateTicker();
   $('dataTag').textContent=started ? 'PARCIAL OFICIAL' : 'DADOS AINDA NÃO DIVULGADOS';
   $('chartTitle').textContent=selected==='br' ? 'Resultado para presidente' : 'Presidente · '+(ESTADOS.find(x=>x.v===selected)?.n || selected.toUpperCase());
   $('secoes').textContent=ts ? fmtPct(pctSec) : '—';
   $('secoesInfo').textContent=ts ? `${n(st)} de ${n(ts)} seções totalizadas` : 'Aguardando totalização';
   $('validos').textContent=n(vv); $('comparecimento').textContent=n(comp);
+  $('pendentes').textContent=eleitorado ? n(pend) : '—';
+  $('pendentesInfo').textContent=eleitorado ? `${n(eleitoradoTotalizado)} de ${n(eleitorado)} eleitores em seções totalizadas` : 'Eleitorado das seções restantes';
   const margin = cands.length>1 ? cands[0].votes-cands[1].votes : 0;
   $('diferenca').textContent=started && cands.length>1 ? n(margin) : '—';
   $('difInfo').textContent=started && cands.length>1 ? `Margem de ${fmtPct(Math.max(0,cands[0].percent-cands[1].percent))}` : 'Em votos válidos';
@@ -794,17 +797,18 @@ async function loadPress(){
   const data=await response.json();
   const paises=data.paises||[];
   const g=data.resumo_g1||{}, online=Boolean(data.acesso_pagina_nesta_tentativa);
-  $('pressTag').textContent=online?'G1 · ATUALIZADO':'G1 · ÚLTIMO DADO VÁLIDO';
+  const somaLula=paises.reduce((s,p)=>s+(Number(p.lula)||0),0), somaFlavio=paises.reduce((s,p)=>s+(Number(p.flavio)||0),0);
+  $('pressTag').textContent=online?'G1 · TABELA VALIDADA':'G1 · ÚLTIMO CONJUNTO VÁLIDO';
   const modificado=g.atualizado_em?new Date(g.atualizado_em):null;
   $('pressMeta').textContent=(modificado&&!Number.isNaN(modificado.getTime())?'G1 atualizado em '+modificado.toLocaleString('pt-BR')+'. ':'')+
    (data.consulta_realizada_em?'Última verificação do painel às '+fmtTime.format(new Date(data.consulta_realizada_em*1000))+'. ':'')+
    'Endereço procurado automaticamente nos índices oficiais do G1; leitura '+(data.modo_leitura_g1==='pagina_amp'?'pela versão AMP de reserva':'pela página principal')+'.';
   $('pressSummary').innerHTML=`<div class="press-stat"><div class="name">Lula · votos no G1</div><div class="value">${n(g.lula||0)}</div></div><div class="press-stat"><div class="name">Flávio · votos no G1</div><div class="value">${n(g.flavio||0)}</div></div><div class="press-stat"><div class="name">Países/territórios vencidos por Lula</div><div class="value">${n(g.vitorias_lula||0)}</div></div><div class="press-stat"><div class="name">Países/territórios vencidos por Flávio</div><div class="value">${n(g.vitorias_flavio||0)}</div></div>`;
-  $('pressTable').innerHTML=paises.length?`<div class="press-diagnosis"><strong>Referência secundária · Poder360</strong> — tabela por país mantida separada do resumo do G1.</div><table class="press-tbl"><thead><tr><th>País</th><th>Lula · votos</th><th>Flávio · votos</th><th>Divisão entre os dois</th><th>Válidos citados</th></tr></thead><tbody>${paises.map(p=>`<tr><td><strong>${esc(p.pais)}</strong></td><td>${n(p.lula)} <span class="muted">(${fmtPct(p.lula_pct)})</span></td><td>${n(p.flavio)} <span class="muted">(${fmtPct(p.flavio_pct)})</span></td><td><div class="press-bars"><i style="width:${p.lula_pct}%"></i><i style="width:${p.flavio_pct}%"></i></div></td><td>${n(p.validos)}</td></tr>`).join('')}</tbody></table>`:'<div class="placeholder">Sem pares de resultados verificados na referência secundária.</div>'; if(data.url_g1){ $('pressSource').href=data.url_g1; $('pressSource').textContent='Abrir matéria localizada · G1'; }
-  $('pressDiagnosis').textContent=(online?'Resumo do G1 validado nesta consulta.':'Não foi possível validar uma leitura nova do G1; exibindo o último resultado válido, sem inventar ou zerar os números.')+
+  $('pressTable').innerHTML=paises.length?`<div class="press-diagnosis"><strong>Detalhamento do G1 · ${n(paises.length)} países/territórios</strong> — a soma desta tabela foi validada contra o resumo acima.</div><table class="press-tbl"><thead><tr><th>País</th><th>Lula · votos</th><th>Flávio · votos</th><th>Divisão entre os dois</th><th>Válidos citados</th></tr></thead><tbody>${paises.map(p=>`<tr><td><strong>${esc(p.pais)}</strong></td><td>${n(p.lula)} <span class="muted">(${fmtPct(p.lula_pct)})</span></td><td>${n(p.flavio)} <span class="muted">(${fmtPct(p.flavio_pct)})</span></td><td><div class="press-bars"><i style="width:${p.lula_pct}%"></i><i style="width:${p.flavio_pct}%"></i></div></td><td>${n(p.validos)}</td></tr>`).join('')}</tbody></table>`:'<div class="placeholder">A tabela do G1 ainda não pôde ser validada contra o resumo.</div>'; if(data.url_g1){ $('pressSource').href=data.url_g1; $('pressSource').textContent='Abrir matéria localizada · G1'; }
+  $('pressDiagnosis').textContent=(online?'Resumo e países do G1 validados nesta consulta.':'Não foi possível validar uma leitura nova do G1; exibindo o último conjunto completo, sem misturar versões.')+
    (data.erro_ultima_consulta?' Falha: '+data.erro_ultima_consulta+'.':'')+
    (data.erro_descoberta_g1?' A busca automática de endereço também falhou nesta rodada.':' A busca automática de endereço está ativa.')+
-   ' Estes números não são somados aos BUs nem à totalização oficial do TSE.';
+   ` A lista contém ${n(paises.length)} países/territórios e fecha em ${n(somaLula)} × ${n(somaFlavio)} votos. Estes números não são somados aos BUs nem à totalização oficial do TSE.`;
  }catch(error){$('pressTag').textContent='ERRO DE CONSULTA';$('pressDiagnosis').textContent='Falha na consulta da fonte jornalística: '+error.message;}
  finally{loadingPress=false;btn.disabled=false;btn.textContent='↻ Verificar reportagem';}
 }

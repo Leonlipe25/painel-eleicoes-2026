@@ -9,17 +9,23 @@ import imprensa_exterior as ie
 HTML_G1 = '''
 <html><head><meta itemprop="dateModified" content="2026-10-25T16:23:26.988-03:00">
 <link rel="canonical" href="https://g1.globo.com/mundo/noticia/2026/10/25/nova-materia.ghtml"></head>
-<body><p>Lula - 106.944 votos Flávio Bolsonaro - 72.066 votos</p>
-<p>Lula venceu em 41 países. Flávio Bolsonaro venceu em 12 países.</p></body></html>
+<body><p>Lula - 15 votos Flávio Bolsonaro - 11 votos</p>
+<p>Lula venceu em 1 países. Flávio Bolsonaro venceu em 1 países.</p>
+<h2>OCEANIA E ÁSIA</h2>
+<h2>Austrália</h2><ul><li>2º turno: Lula, 10 votos</li><li>2º turno: Flávio, 3 votos</li></ul>
+<h2>Japão</h2><ul><li>2º turno: Flávio Bolsonaro, 8 votos</li><li>2º turno: Lula, 5 votos</li></ul>
+<h3>Resumo do dia</h3></body></html>
 '''
 
 
 class ImprensaExteriorTests(unittest.TestCase):
     def test_parse_g1(self):
         resumo = ie.parse_g1(HTML_G1)
-        self.assertEqual(resumo['lula'], 106944)
-        self.assertEqual(resumo['flavio'], 72066)
-        self.assertEqual(resumo['paises_territorios'], 53)
+        self.assertEqual(resumo['lula'], 15)
+        self.assertEqual(resumo['flavio'], 11)
+        self.assertEqual(resumo['paises_territorios'], 2)
+        paises = ie.parse_g1_paises(HTML_G1, resumo)
+        self.assertEqual(paises, {'Austrália': (10, 3), 'Japão': (5, 8)})
 
     def test_descobre_novo_endereco_no_sitemap_oficial(self):
         novo = ('https://g1.globo.com/mundo/noticia/2026/10/25/'
@@ -41,10 +47,16 @@ class ImprensaExteriorTests(unittest.TestCase):
             return HTML_G1, url
 
         with patch.object(ie, '_baixar_resposta', side_effect=resposta):
-            resumo, resolvida, modo = ie.obter_g1(ie.G1)
+            resumo, paises, resolvida, modo = ie.obter_g1(ie.G1)
         self.assertEqual(modo, 'pagina_amp')
-        self.assertEqual(resumo['vitorias_lula'], 41)
+        self.assertEqual(resumo['vitorias_lula'], 1)
+        self.assertEqual(len(paises), 2)
         self.assertEqual(resolvida, 'https://g1.globo.com/mundo/noticia/2026/10/25/nova-materia.ghtml')
+
+    def test_rejeita_tabela_que_nao_fecha_com_resumo(self):
+        resumo = ie.parse_g1(HTML_G1.replace('Lula - 15 votos', 'Lula - 16 votos'))
+        with self.assertRaisesRegex(ValueError, 'não fecha com o resumo'):
+            ie.parse_g1_paises(HTML_G1, resumo)
 
 
 if __name__ == '__main__':
