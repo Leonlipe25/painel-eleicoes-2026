@@ -326,7 +326,7 @@ select:focus-visible,.btn:focus-visible{outline:2px solid #7ab5ff;outline-offset
     </div>
   </section>
 
-  <div class="notice" id="notice"><strong>Preparando a apuração.</strong> O topo do painel prioriza a apuração principal do TSE. Logo abaixo ficam os blocos do exterior, com G1 para conferência e números de fonte jornalística identificada e os demais dados separados por fonte.</div>
+  <div class="notice" id="notice"><strong>Preparando a apuração.</strong> O topo do painel prioriza a apuração principal do TSE. Logo abaixo ficam os blocos do exterior, com o resumo do G1 atualizado separadamente da tabela jornalística do Poder360, dos BUs e da totalização oficial.</div>
 
   <section class="hero-winner" id="winnerHero">
     <div class="topline">Resultado definido</div>
@@ -467,15 +467,15 @@ select:focus-visible,.btn:focus-visible{outline:2px solid #7ab5ff;outline-offset
 
   <section class="panel press-panel" id="pressPanel">
     <div class="panel-title"><div><div class="kicker">Bloco do exterior · referência jornalística</div>
-      <h2 style="margin-top:8px">Exterior · parciais publicadas na imprensa</h2>
-      <div class="sub">G1 disponível para conferência. Números da tabela obtidos da reportagem do Poder360; não são dados do G1 nem a totalização oficial do TSE.</div></div>
-      <span class="press-tag" id="pressTag">DADOS: PODER360 · IMPRENSA</span>
+      <h2 style="margin-top:8px">Exterior · parcial publicada pelo G1</h2>
+      <div class="sub">Resumo do G1 atualizado automaticamente. A tabela por país do Poder360 aparece abaixo como referência secundária e não é misturada ao resumo.</div></div>
+      <span class="press-tag" id="pressTag">G1 · CONSULTANDO</span>
     </div>
     <div class="press-meta" id="pressMeta">Consultando publicação jornalística...</div>
     <div class="press-summary" id="pressSummary"></div>
     <div class="press-tbl-wrap" id="pressTable"><div class="placeholder">Preparando o panorama publicado...</div></div>
     <div class="press-top"><div class="press-links"><a id="pressSource" href="https://g1.globo.com/mundo/noticia/2026/10/25/votacao-no-exterior-confira-os-resultados-do-2o-turno-entre-lula-e-flavio-bolsonaro.ghtml" target="_blank" rel="noopener noreferrer">Abrir matéria principal · G1</a><a href="https://www.poder360.com.br/poder-eleicoes-2026/compare-as-votacoes-de-lula-e-flavio-no-1o-e-no-2o-turno-no-exterior/" target="_blank" rel="noopener noreferrer">Referência secundária · Poder360</a></div><button class="btn" id="refreshPress">↻ Verificar reportagem</button></div>
-    <div class="press-diagnosis" id="pressDiagnosis">O G1 é um link de conferência. A tabela é alimentada por Poder360. Quando falhar a leitura automática, a última referência será sinalizada como possivelmente desatualizada.</div>
+    <div class="press-diagnosis" id="pressDiagnosis">O resumo principal é lido do G1. A tabela detalhada permanece identificada como Poder360. Nenhum destes números é somado ao TSE ou aos boletins.</div>
   </section>
 
   <section class="panel bu-panel" id="buPanel">
@@ -792,16 +792,20 @@ async function loadPress(){
  try{
   const response=await fetch('/api/imprensa-exterior',{cache:'no-store'});
   const data=await response.json();
-  const paises=data.paises||[];
-  $('pressTag').textContent=data.acesso_pagina_nesta_tentativa?'DADOS: PODER360 · IMPRENSA':'DADOS: PODER360 · REFERÊNCIA';
-  $('pressMeta').textContent='Link de conferência: G1. Fonte efetiva dos números exibidos: '+(data.fonte||'Imprensa')+' · matéria datada de '+(data.dados_publicados_a_partir_de||'25/10/2026')+'. '+
+  const paises=data.paises_poder||data.paises||[];
+  const g1=data.resumo_g1||{};
+  $('pressTag').textContent=data.acesso_pagina_nesta_tentativa?'G1 · ATUALIZADO':'G1 · ÚLTIMA LEITURA';
+  const editorial=g1.atualizado_em?new Date(g1.atualizado_em):null;
+  $('pressMeta').textContent='Fonte principal: G1. '+
+   (editorial&&!Number.isNaN(editorial.getTime())?'Matéria atualizada às '+fmtTime.format(editorial)+'. ':'')+
    (data.consulta_realizada_em?'Leitura automática concluída às '+fmtTime.format(new Date(data.consulta_realizada_em*1000))+'. ':'')+
-   'O horário exato de publicação de cada país pode ser diferente. Nunca somar estes dados aos BUs ou ao resultado nacional.';
-  $('pressSummary').innerHTML=`<div class="press-stat"><div class="name">Países com números na reportagem</div><div class="value">${n(paises.length)}</div></div><div class="press-stat"><div class="name">Conferência adicional</div><div class="value" style="font-size:17px">G1</div></div><div class="press-stat"><div class="name">Base automática atual</div><div class="value" style="font-size:17px">${esc(data.fonte||'Imprensa')}</div></div>`;
-  $('pressTable').innerHTML=paises.length?`<table class="press-tbl"><thead><tr><th>País</th><th>Lula · votos</th><th>Flávio · votos</th><th>Divisão entre os dois</th><th>Válidos citados</th></tr></thead><tbody>${paises.map(p=>`<tr><td><strong>${esc(p.pais)}</strong></td><td>${n(p.lula)} <span class="muted">(${fmtPct(p.lula_pct)})</span></td><td>${n(p.flavio)} <span class="muted">(${fmtPct(p.flavio_pct)})</span></td><td><div class="press-bars"><i style="width:${p.lula_pct}%"></i><i style="width:${p.flavio_pct}%"></i></div></td><td>${n(p.validos)}</td></tr>`).join('')}</tbody></table>`:'<div class="placeholder">Sem pares de resultados verificados na reportagem.</div>'; if(data.url_g1){ $('pressSource').href=data.url_g1; $('pressSource').textContent='Abrir matéria principal · G1'; }
-  $('pressDiagnosis').textContent=(data.acesso_pagina_nesta_tentativa?'O bloco do exterior foi atualizado com a base automática configurada pelo painel.':'Sem leitura nova da base automática. Exibindo a última referência editorial registrada, que pode estar antiga.')+
-   (data.erro_ultima_consulta?' Motivo da falha: '+data.erro_ultima_consulta+'.':'')+
-   ' Os dados são da matéria do Poder360 (não do G1). O G1 é um link de conferência independente.';
+   'Parcial jornalística; não somar aos BUs nem à totalização oficial do TSE.';
+  $('pressSummary').innerHTML=`<div class="press-stat"><div class="name">Lula · países/territórios</div><div class="value">${n(g1.vitorias_lula)}</div></div><div class="press-stat"><div class="name">Flávio · países</div><div class="value">${n(g1.vitorias_flavio)}</div></div><div class="press-stat"><div class="name">Lula · votos na parcial G1</div><div class="value">${n(g1.lula)}</div></div><div class="press-stat"><div class="name">Flávio · votos na parcial G1</div><div class="value">${n(g1.flavio)}</div></div>`;
+  $('pressTable').innerHTML=paises.length?`<div class="press-meta"><strong>Detalhamento secundário · Poder360</strong> · ${n(paises.length)} países na referência disponível, sem completar ou alterar o resumo do G1.</div><table class="press-tbl"><thead><tr><th>País</th><th>Lula · votos</th><th>Flávio · votos</th><th>Divisão entre os dois</th><th>Válidos citados</th></tr></thead><tbody>${paises.map(p=>`<tr><td><strong>${esc(p.pais)}</strong></td><td>${n(p.lula)} <span class="muted">(${fmtPct(p.lula_pct)})</span></td><td>${n(p.flavio)} <span class="muted">(${fmtPct(p.flavio_pct)})</span></td><td><div class="press-bars"><i style="width:${p.lula_pct}%"></i><i style="width:${p.flavio_pct}%"></i></div></td><td>${n(p.validos)}</td></tr>`).join('')}</tbody></table>`:'<div class="placeholder">Sem detalhamento secundário disponível.</div>'; if(data.url_g1){ $('pressSource').href=data.url_g1; $('pressSource').textContent='Abrir matéria principal · G1'; }
+  $('pressDiagnosis').textContent=(data.acesso_pagina_nesta_tentativa?'Resumo do G1 atualizado automaticamente.':'Sem leitura nova do G1; exibindo a última referência registrada, que pode estar desatualizada.')+
+   (data.erro_ultima_consulta?' Motivo: '+data.erro_ultima_consulta+'.':'')+
+   (data.erro_poder360?' A referência secundária do Poder360 também falhou: '+data.erro_poder360+'.':'')+
+   ' Fontes jornalísticas mantidas separadas da totalização oficial e dos BUs.';
  }catch(error){$('pressTag').textContent='ERRO DE CONSULTA';$('pressDiagnosis').textContent='Falha na consulta da fonte jornalística: '+error.message;}
  finally{loadingPress=false;btn.disabled=false;btn.textContent='↻ Verificar reportagem';}
 }
