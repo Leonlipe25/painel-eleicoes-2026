@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: painel-eleitoral-2026
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    healthCheckPath: /health
+    envVars:
+      - key: WEB_MODE
+        value: "1"
+      - key: ENABLE_BU_COLLECTOR
+        value: "0"
